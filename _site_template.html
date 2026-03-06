@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📊 Dashboard de Oficios – Colpatria</title>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<style>
+  :root{--bg:#0e1117;--card:#1a1d23;--border:#2d3139;--text:#fafafa;
+        --muted:#8b949e;--accent:#4fc3f7;--red:#e74c3c;--green:#2ecc71;
+        --yellow:#f39c12;--blue:#3498db;--purple:#9b59b6}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+       background:var(--bg);color:var(--text);line-height:1.5}
+  .container{max-width:1400px;margin:0 auto;padding:20px}
+  h1{text-align:center;font-size:1.8rem;padding:20px 0;border-bottom:1px solid var(--border)}
+  h2{font-size:1.2rem;margin:0 0 12px;color:var(--accent)}
+  .kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:24px 0}
+  .kpi{background:var(--card);border:1px solid var(--border);border-radius:8px;
+       padding:16px;text-align:center}
+  .kpi .label{font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+  .kpi .value{font-size:1.8rem;font-weight:700;margin-top:4px}
+  .row{display:grid;gap:16px;margin:16px 0}
+  .row-2{grid-template-columns:1fr 1fr}
+  .row-1{grid-template-columns:1fr}
+  .row-1-2{grid-template-columns:1fr 2fr}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px}
+  .filters{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:16px 0;
+           background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 16px}
+  .filters label{font-size:.8rem;color:var(--muted);margin-right:4px}
+  .filters select{background:var(--bg);color:var(--text);border:1px solid var(--border);
+                   border-radius:4px;padding:6px 10px;font-size:.85rem;min-width:160px}
+  .filters select:focus{outline:none;border-color:var(--accent)}
+  table{width:100%;border-collapse:collapse;font-size:.85rem}
+  th{background:var(--bg);color:var(--accent);padding:8px 10px;text-align:left;
+     border-bottom:2px solid var(--border);position:sticky;top:0}
+  td{padding:6px 10px;border-bottom:1px solid var(--border)}
+  tr:hover td{background:rgba(79,195,247,.06)}
+  .table-wrap{max-height:380px;overflow-y:auto;border:1px solid var(--border);border-radius:6px}
+  .section{margin-top:32px;border-top:1px solid var(--border);padding-top:20px}
+  footer{text-align:center;color:var(--muted);font-size:.75rem;padding:30px 0 10px;
+         border-top:1px solid var(--border);margin-top:30px}
+  .loading{text-align:center;padding:60px;color:var(--muted);font-size:1.2rem}
+  @media(max-width:768px){
+    .kpi-row{grid-template-columns:repeat(2,1fr)}
+    .row-2,.row-1-2{grid-template-columns:1fr}
+    .filters{flex-direction:column}
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>📊 Dashboard de Oficios – Colpatria</h1>
+
+  <!-- Filtros -->
+  <div class="filters">
+    <div><label>Clasificación:</label>
+      <select id="fClf"><option value="">Todos</option></select></div>
+    <div><label>Tipo:</label>
+      <select id="fTipo"><option value="">Todos</option></select></div>
+    <div><label>Ciudad (top 100):</label>
+      <select id="fCity"><option value="">Todas</option></select></div>
+    <div><label>Entidad (top 100):</label>
+      <select id="fEnt"><option value="">Todas</option></select></div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="kpi-row">
+    <div class="kpi"><div class="label">Total Oficios</div><div class="value" id="kTotal">–</div></div>
+    <div class="kpi"><div class="label">Únicos</div><div class="value" id="kUnicos">–</div></div>
+    <div class="kpi"><div class="label">Duplicados</div><div class="value" id="kDup">–</div></div>
+    <div class="kpi"><div class="label">Entidades</div><div class="value" id="kEnt">–</div></div>
+    <div class="kpi"><div class="label">Ciudades</div><div class="value" id="kCity">–</div></div>
+  </div>
+
+  <!-- Pies -->
+  <div class="row row-2">
+    <div class="card"><h2>Clasificación (Embargo / Desembargo / Requerimiento)</h2>
+      <div id="pieClf" style="height:340px"></div></div>
+    <div class="card"><h2>Tipo de Oficio (Judicial / Coactivo)</h2>
+      <div id="pieTipo" style="height:340px"></div></div>
+  </div>
+
+  <!-- Barras Entidades -->
+  <div class="section">
+    <div class="card"><h2>Top 25 Entidades</h2>
+      <div id="barEnt" style="height:650px"></div></div>
+  </div>
+
+  <!-- Barras Ciudades -->
+  <div class="section">
+    <div class="card"><h2>Top 25 Ciudades</h2>
+      <div id="barCity" style="height:600px"></div></div>
+  </div>
+
+  <!-- Cross Table -->
+  <div class="section">
+    <div class="card"><h2>Clasificación × Tipo de Oficio</h2>
+      <div id="crossTable" class="table-wrap"></div></div>
+  </div>
+
+  <!-- Duplicados -->
+  <div class="section">
+    <div class="row row-1-2">
+      <div class="card">
+        <h2>Resumen Duplicados</h2>
+        <div id="dupSummary"></div>
+      </div>
+      <div class="card">
+        <h2>Top 15 Oficios Más Repetidos</h2>
+        <div id="dupTable" class="table-wrap"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Variantes Entidad -->
+  <div class="section">
+    <div class="card">
+      <h2>Detalle de Entidad: variantes originales</h2>
+      <select id="selEnt" style="margin:8px 0;background:var(--bg);color:var(--text);
+              border:1px solid var(--border);border-radius:4px;padding:6px;width:100%;
+              font-size:.85rem;max-width:600px"></select>
+      <div id="varEntTable" class="table-wrap" style="margin-top:8px"></div>
+    </div>
+  </div>
+
+  <!-- Variantes Ciudad -->
+  <div class="section">
+    <div class="card">
+      <h2>Detalle de Ciudad: variantes originales</h2>
+      <select id="selCity" style="margin:8px 0;background:var(--bg);color:var(--text);
+              border:1px solid var(--border);border-radius:4px;padding:6px;width:100%;
+              font-size:.85rem;max-width:600px"></select>
+      <div id="varCityTable" class="table-wrap" style="margin-top:8px"></div>
+    </div>
+  </div>
+
+  <footer>Dashboard Oficios Colpatria · Normalización automática de entidades y ciudades · Versión estática para Netlify</footer>
+</div>
+
+<script>
+const D='data/',fmt=n=>n.toLocaleString('es-CO');
+const plotLayout={paper_bgcolor:'#1a1d23',plot_bgcolor:'#1a1d23',
+  font:{color:'#fafafa',size:12},margin:{l:10,r:10,t:10,b:10}};
+const plotCfg={responsive:true,displayModeBar:false};
+
+let DATA={};
+
+async function load(f){const r=await fetch(D+f);return r.json();}
+
+async function init(){
+  try{
+    [DATA.kpis,DATA.clf,DATA.tipo,DATA.cross,DATA.topEnt,DATA.topCity,
+     DATA.topDup,DATA.clfTipo,DATA.clfEnt,DATA.clfCity,DATA.filtros,
+     DATA.varEnt,DATA.varCity]=await Promise.all([
+      load('kpis.json'),load('clasificacion.json'),load('tipo_oficio.json'),
+      load('cross.json'),load('top_entidades.json'),load('top_ciudades.json'),
+      load('top_duplicados.json'),load('clf_tipo.json'),
+      load('clf_entidades.json'),load('clf_ciudades.json'),
+      load('filtros.json'),load('variantes_entidad.json'),
+      load('variantes_ciudad.json')
+    ]);
+    populateFilters();
+    render();
+  }catch(e){
+    document.querySelector('.container').innerHTML=
+      '<div class="loading">❌ Error cargando datos: '+e.message+'<br>Asegúrate de servir desde un servidor HTTP.</div>';
+  }
+}
+
+function populateFilters(){
+  const f=DATA.filtros;
+  const fClf=document.getElementById('fClf');
+  f.clasificaciones.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;fClf.appendChild(o);});
+  const fTipo=document.getElementById('fTipo');
+  f.tipos.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;fTipo.appendChild(o);});
+  const fCity=document.getElementById('fCity');
+  f.ciudades.forEach(c=>{const o=document.createElement('option');o.value=c.name;o.textContent=c.name+' ('+fmt(c.count)+')';fCity.appendChild(o);});
+  const fEnt=document.getElementById('fEnt');
+  f.entidades.forEach(c=>{const o=document.createElement('option');o.value=c.name;o.textContent=c.name+' ('+fmt(c.count)+')';fEnt.appendChild(o);});
+
+  // Selectors variantes
+  const selEnt=document.getElementById('selEnt');
+  f.entidades.forEach(c=>{const o=document.createElement('option');o.value=c.name;o.textContent=c.name+'  ('+fmt(c.count)+')';selEnt.appendChild(o);});
+  const selCity=document.getElementById('selCity');
+  f.ciudades.forEach(c=>{const o=document.createElement('option');o.value=c.name;o.textContent=c.name+'  ('+fmt(c.count)+')';selCity.appendChild(o);});
+
+  // Events
+  ['fClf','fTipo','fCity','fEnt'].forEach(id=>
+    document.getElementById(id).addEventListener('change',render));
+  selEnt.addEventListener('change',renderVarEnt);
+  selCity.addEventListener('change',renderVarCity);
+}
+
+function getFilterNote(){
+  const clf=document.getElementById('fClf').value;
+  const tipo=document.getElementById('fTipo').value;
+  const city=document.getElementById('fCity').value;
+  const ent=document.getElementById('fEnt').value;
+  return {clf,tipo,city,ent,hasFilter:!!(clf||tipo||city||ent)};
+}
+
+function render(){
+  const f=getFilterNote();
+  renderKPIs(f);
+  renderPies(f);
+  renderBars(f);
+  renderCross();
+  renderDuplicados();
+  renderVarEnt();
+  renderVarCity();
+}
+
+function renderKPIs(f){
+  if(!f.hasFilter){
+    const k=DATA.kpis;
+    document.getElementById('kTotal').textContent=fmt(k.total);
+    document.getElementById('kUnicos').textContent=fmt(k.unicos);
+    document.getElementById('kDup').textContent=fmt(k.duplicados);
+    document.getElementById('kEnt').textContent=fmt(k.entidades);
+    document.getElementById('kCity').textContent=fmt(k.ciudades);
+  }else{
+    // Approximate from available data
+    document.getElementById('kTotal').textContent='—';
+    document.getElementById('kUnicos').textContent='—';
+    document.getElementById('kDup').textContent='—';
+    // Count from filtered top lists
+    let entCount=0,cityCount=0;
+    const entData=getFilteredEntities(f);
+    const cityData=getFilteredCities(f);
+    let total=0;
+    if(f.clf && !f.tipo && !f.city && !f.ent){
+      total=Object.entries(DATA.clf).filter(([k])=>k===f.clf).reduce((s,[,v])=>s+v,0);
+    }else if(!f.clf && f.tipo && !f.city && !f.ent){
+      total=Object.entries(DATA.tipo).filter(([k])=>k===f.tipo).reduce((s,[,v])=>s+v,0);
+    }else{
+      total=entData.reduce((s,e)=>s+e.count,0);
+    }
+    document.getElementById('kTotal').textContent=total>0?fmt(total):'—';
+    document.getElementById('kUnicos').textContent='—';
+    document.getElementById('kDup').textContent='—';
+    document.getElementById('kEnt').textContent=fmt(entData.length);
+    document.getElementById('kCity').textContent=fmt(cityData.length);
+  }
+}
+
+function getFilteredEntities(f){
+  if(f.clf && DATA.clfEnt[f.clf]) return DATA.clfEnt[f.clf];
+  return DATA.topEnt;
+}
+function getFilteredCities(f){
+  if(f.clf && DATA.clfCity[f.clf]) return DATA.clfCity[f.clf];
+  return DATA.topCity;
+}
+
+function renderPies(f){
+  // Clasificación pie
+  let clfData=DATA.clf;
+  if(f.tipo){
+    // Filter clf_tipo by tipo
+    const filtered={};
+    DATA.clfTipo.filter(r=>r.tipo===f.tipo).forEach(r=>{filtered[r.clf]=(filtered[r.clf]||0)+r.n;});
+    if(Object.keys(filtered).length>0) clfData=filtered;
+  }
+  const clfColors={'EMBARGO':'#e74c3c','DESEMBARGO':'#2ecc71','REQUERIMIENTO':'#f39c12'};
+  const clfLabels=Object.keys(clfData);
+  Plotly.newPlot('pieClf',[{
+    type:'pie',labels:clfLabels,values:clfLabels.map(k=>clfData[k]),
+    hole:.4,textinfo:'label+percent+value',
+    marker:{colors:clfLabels.map(k=>clfColors[k]||'#888')}
+  }],{...plotLayout},plotCfg);
+
+  // Tipo pie
+  let tipoData=DATA.tipo;
+  if(f.clf){
+    const filtered={};
+    DATA.clfTipo.filter(r=>r.clf===f.clf).forEach(r=>{filtered[r.tipo]=(filtered[r.tipo]||0)+r.n;});
+    if(Object.keys(filtered).length>0) tipoData=filtered;
+  }
+  const tipoColors={'JUDICIAL':'#3498db','COACTIVO':'#9b59b6'};
+  const tipoLabels=Object.keys(tipoData);
+  Plotly.newPlot('pieTipo',[{
+    type:'pie',labels:tipoLabels,values:tipoLabels.map(k=>tipoData[k]),
+    hole:.4,textinfo:'label+percent+value',
+    marker:{colors:tipoLabels.map(k=>tipoColors[k]||'#888')}
+  }],{...plotLayout},plotCfg);
+}
+
+function renderBars(f){
+  const entData=getFilteredEntities(f).slice(0,25);
+  const entNames=entData.map(e=>e.name).reverse();
+  const entValues=entData.map(e=>e.count).reverse();
+  Plotly.newPlot('barEnt',[{
+    type:'bar',x:entValues,y:entNames,orientation:'h',
+    marker:{color:entValues.map((_,i)=>`hsl(${5+i*2},70%,${45+i}%)`)}
+  }],{...plotLayout,margin:{l:320,r:20,t:10,b:40},height:650,
+      yaxis:{autorange:true}},plotCfg);
+
+  const cityData=getFilteredCities(f).slice(0,25);
+  const cityNames=cityData.map(e=>e.name).reverse();
+  const cityValues=cityData.map(e=>e.count).reverse();
+  Plotly.newPlot('barCity',[{
+    type:'bar',x:cityValues,y:cityNames,orientation:'h',
+    marker:{color:cityValues.map((_,i)=>`hsl(${120+i*3},60%,${40+i}%)`)}
+  }],{...plotLayout,margin:{l:250,r:20,t:10,b:40},height:600,
+      yaxis:{autorange:true}},plotCfg);
+}
+
+function renderCross(){
+  const c=DATA.cross;
+  const rows=Object.keys(c);
+  const cols=rows.length>0?Object.keys(c[rows[0]]):[];
+  let html='<table><thead><tr><th></th>';
+  cols.forEach(col=>html+='<th>'+col+'</th>');
+  html+='</tr></thead><tbody>';
+  rows.forEach(row=>{
+    html+='<tr><td><strong>'+row+'</strong></td>';
+    cols.forEach(col=>html+='<td>'+fmt(c[row][col]||0)+'</td>');
+    html+='</tr>';
+  });
+  html+='</tbody></table>';
+  document.getElementById('crossTable').innerHTML=html;
+}
+
+function renderDuplicados(){
+  const k=DATA.kpis;
+  const pct=k.total>0?(k.duplicados/k.total*100).toFixed(1):0;
+  document.getElementById('dupSummary').innerHTML=`
+    <table>
+      <tr><td>Total registros</td><td><strong>${fmt(k.total)}</strong></td></tr>
+      <tr><td>Oficios únicos</td><td><strong>${fmt(k.unicos)}</strong></td></tr>
+      <tr><td>Registros duplicados</td><td><strong>${fmt(k.duplicados)}</strong></td></tr>
+      <tr><td>% duplicación</td><td><strong>${pct}%</strong></td></tr>
+    </table>`;
+
+  let html='<table><thead><tr><th>Entidad</th><th>Clasif.</th><th>Tipo</th><th>Monto</th><th>Ciudad</th><th>Repeticiones</th></tr></thead><tbody>';
+  DATA.topDup.forEach(d=>{
+    html+=`<tr><td>${d.entidad}</td><td>${d.clasificacion}</td><td>${d.tipo}</td><td>${d.monto}</td><td>${d.ciudad}</td><td><strong>${fmt(d.repeticiones)}</strong></td></tr>`;
+  });
+  html+='</tbody></table>';
+  document.getElementById('dupTable').innerHTML=html;
+}
+
+function renderVarEnt(){
+  const sel=document.getElementById('selEnt').value;
+  if(!sel||!DATA.varEnt[sel]){
+    document.getElementById('varEntTable').innerHTML='<p style="color:var(--muted);padding:12px">Selecciona una entidad</p>';
+    return;
+  }
+  const items=DATA.varEnt[sel];
+  let html='<table><thead><tr><th>Nombre original</th><th>Cantidad</th><th>Ciudades</th></tr></thead><tbody>';
+  items.forEach(i=>{
+    html+=`<tr><td>${i.original}</td><td>${fmt(i.cantidad)}</td><td>${i.ciudades}</td></tr>`;
+  });
+  html+='</tbody></table>';
+  document.getElementById('varEntTable').innerHTML=html;
+}
+
+function renderVarCity(){
+  const sel=document.getElementById('selCity').value;
+  if(!sel||!DATA.varCity[sel]){
+    document.getElementById('varCityTable').innerHTML='<p style="color:var(--muted);padding:12px">Selecciona una ciudad</p>';
+    return;
+  }
+  const items=DATA.varCity[sel];
+  let html='<table><thead><tr><th>Nombre original</th><th>Cantidad</th><th>Entidades distintas</th></tr></thead><tbody>';
+  items.forEach(i=>{
+    html+=`<tr><td>${i.original}</td><td>${fmt(i.cantidad)}</td><td>${fmt(i.entidades)}</td></tr>`;
+  });
+  html+='</tbody></table>';
+  document.getElementById('varCityTable').innerHTML=html;
+}
+
+init();
+</script>
+</body>
+</html>

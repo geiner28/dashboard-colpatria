@@ -222,6 +222,23 @@ def main():
     _w({"clasificaciones": all_clf, "tipos": all_tipo,
         "ciudades": all_cities, "entidades": all_ents}, "filtros.json")
 
+    # 14) Cube: datos agrupados indexados para filtrado client-side
+    g = df.groupby(["tipo_documento","tipo_embargo","ciudad_norm","entidad_norm"],
+                   dropna=False).size().reset_index(name="n")
+    cube_clfs = sorted(g["tipo_documento"].dropna().unique().tolist())
+    cube_tipos = sorted(g["tipo_embargo"].dropna().unique().tolist())
+    cube_cities = sorted(g["ciudad_norm"].dropna().unique().tolist())
+    cube_ents = sorted(g["entidad_norm"].dropna().unique().tolist())
+    rows = []
+    for _, r in g.iterrows():
+        ci = cube_clfs.index(r["tipo_documento"]) if pd.notna(r["tipo_documento"]) else -1
+        ti = cube_tipos.index(r["tipo_embargo"]) if pd.notna(r["tipo_embargo"]) else -1
+        cyi = cube_cities.index(r["ciudad_norm"]) if pd.notna(r["ciudad_norm"]) else -1
+        ei = cube_ents.index(r["entidad_norm"]) if pd.notna(r["entidad_norm"]) else -1
+        rows.append([ci, ti, cyi, ei, int(r["n"])])
+    _w({"clfs": cube_clfs, "tipos": cube_tipos, "cities": cube_cities,
+        "ents": cube_ents, "rows": rows}, "cube.json")
+
     # ── Copiar HTML ──
     print("📄 Generando index.html …")
     html_src = os.path.join(os.path.dirname(__file__), "_site_template.html")

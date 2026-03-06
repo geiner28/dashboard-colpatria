@@ -31,6 +31,7 @@
   .filters select{background:var(--bg);color:var(--text);border:1px solid var(--border);
                    border-radius:4px;padding:6px 10px;font-size:.85rem;min-width:160px}
   .filters select:focus{outline:none;border-color:var(--accent)}
+  .filter-info{width:100%;font-size:.8rem;color:var(--accent);margin-top:4px;font-style:italic}
   table{width:100%;border-collapse:collapse;font-size:.85rem}
   th{background:var(--bg);color:var(--accent);padding:8px 10px;text-align:left;
      border-bottom:2px solid var(--border);position:sticky;top:0}
@@ -58,19 +59,20 @@
       <select id="fClf"><option value="">Todos</option></select></div>
     <div><label>Tipo:</label>
       <select id="fTipo"><option value="">Todos</option></select></div>
-    <div><label>Ciudad (top 100):</label>
+    <div><label>Ciudad:</label>
       <select id="fCity"><option value="">Todas</option></select></div>
-    <div><label>Entidad (top 100):</label>
+    <div><label>Entidad:</label>
       <select id="fEnt"><option value="">Todas</option></select></div>
+    <div class="filter-info" id="filterInfo"></div>
   </div>
 
   <!-- KPIs -->
   <div class="kpi-row">
-    <div class="kpi"><div class="label">Total Oficios</div><div class="value" id="kTotal">–</div></div>
-    <div class="kpi"><div class="label">Únicos</div><div class="value" id="kUnicos">–</div></div>
-    <div class="kpi"><div class="label">Duplicados</div><div class="value" id="kDup">–</div></div>
+    <div class="kpi"><div class="label">Total Oficios (filtrado)</div><div class="value" id="kTotal">–</div></div>
     <div class="kpi"><div class="label">Entidades</div><div class="value" id="kEnt">–</div></div>
     <div class="kpi"><div class="label">Ciudades</div><div class="value" id="kCity">–</div></div>
+    <div class="kpi"><div class="label">Únicos (global)</div><div class="value" id="kUnicos">–</div></div>
+    <div class="kpi"><div class="label">Duplicados (global)</div><div class="value" id="kDup">–</div></div>
   </div>
 
   <!-- Pies -->
@@ -103,7 +105,7 @@
   <div class="section">
     <div class="row row-1-2">
       <div class="card">
-        <h2>Resumen Duplicados</h2>
+        <h2>Resumen Duplicados (global)</h2>
         <div id="dupSummary"></div>
       </div>
       <div class="card">
@@ -145,20 +147,16 @@ const plotLayout={paper_bgcolor:'#1a1d23',plot_bgcolor:'#1a1d23',
 const plotCfg={responsive:true,displayModeBar:false};
 
 let DATA={};
+let CUBE=null; // {clfs,tipos,cities,ents,rows} — rows:[clfIdx,tipoIdx,cityIdx,entIdx,count]
 
 async function load(f){const r=await fetch(D+f);return r.json();}
 
 async function init(){
   try{
-    [DATA.kpis,DATA.clf,DATA.tipo,DATA.cross,DATA.topEnt,DATA.topCity,
-     DATA.topDup,DATA.clfTipo,DATA.clfEnt,DATA.clfCity,DATA.filtros,
-     DATA.varEnt,DATA.varCity]=await Promise.all([
-      load('kpis.json'),load('clasificacion.json'),load('tipo_oficio.json'),
-      load('cross.json'),load('top_entidades.json'),load('top_ciudades.json'),
-      load('top_duplicados.json'),load('clf_tipo.json'),
-      load('clf_entidades.json'),load('clf_ciudades.json'),
-      load('filtros.json'),load('variantes_entidad.json'),
-      load('variantes_ciudad.json')
+    [DATA.kpis,DATA.topDup,DATA.varEnt,DATA.varCity,DATA.filtros,CUBE]=await Promise.all([
+      load('kpis.json'),load('top_duplicados.json'),
+      load('variantes_entidad.json'),load('variantes_ciudad.json'),
+      load('filtros.json'),load('cube.json')
     ]);
     populateFilters();
     render();
@@ -192,113 +190,107 @@ function populateFilters(){
   selCity.addEventListener('change',renderVarCity);
 }
 
-function getFilterNote(){
+/* ═══════════════════════════════════════════════════════
+   CUBE FILTERING
+   Each row: [clfIdx, tipoIdx, cityIdx, entIdx, count]
+   ═══════════════════════════════════════════════════════ */
+
+function getFilters(){
   const clf=document.getElementById('fClf').value;
   const tipo=document.getElementById('fTipo').value;
   const city=document.getElementById('fCity').value;
   const ent=document.getElementById('fEnt').value;
-  return {clf,tipo,city,ent,hasFilter:!!(clf||tipo||city||ent)};
+  const clfIdx=clf?CUBE.clfs.indexOf(clf):-1;
+  const tipoIdx=tipo?CUBE.tipos.indexOf(tipo):-1;
+  const cityIdx=city?CUBE.cities.indexOf(city):-1;
+  const entIdx=ent?CUBE.ents.indexOf(ent):-1;
+  return {clf,tipo,city,ent,clfIdx,tipoIdx,cityIdx,entIdx,
+          hasFilter:!!(clf||tipo||city||ent)};
 }
 
+function filteredRows(f){
+  return CUBE.rows.filter(r=>{
+    if(f.clfIdx>=0&&r[0]!==f.clfIdx) return false;
+    if(f.tipoIdx>=0&&r[1]!==f.tipoIdx) return false;
+    if(f.cityIdx>=0&&r[2]!==f.cityIdx) return false;
+    if(f.entIdx>=0&&r[3]!==f.entIdx) return false;
+    return true;
+  });
+}
+
+/* ═══════ RENDER ═══════ */
+
 function render(){
-  const f=getFilterNote();
-  renderKPIs(f);
-  renderPies(f);
-  renderBars(f);
-  renderCross();
+  const f=getFilters();
+  const rows=filteredRows(f);
+
+  const parts=[];
+  if(f.clf) parts.push('Clasif: '+f.clf);
+  if(f.tipo) parts.push('Tipo: '+f.tipo);
+  if(f.city) parts.push('Ciudad: '+f.city);
+  if(f.ent) parts.push('Entidad: '+f.ent);
+  document.getElementById('filterInfo').textContent=
+    parts.length?'🔍 Filtros activos: '+parts.join(' · '):'';
+
+  renderKPIs(rows);
+  renderPies(rows);
+  renderBars(rows);
+  renderCross(rows);
   renderDuplicados();
   renderVarEnt();
   renderVarCity();
 }
 
-function renderKPIs(f){
-  if(!f.hasFilter){
-    const k=DATA.kpis;
-    document.getElementById('kTotal').textContent=fmt(k.total);
-    document.getElementById('kUnicos').textContent=fmt(k.unicos);
-    document.getElementById('kDup').textContent=fmt(k.duplicados);
-    document.getElementById('kEnt').textContent=fmt(k.entidades);
-    document.getElementById('kCity').textContent=fmt(k.ciudades);
-  }else{
-    // Approximate from available data
-    document.getElementById('kTotal').textContent='—';
-    document.getElementById('kUnicos').textContent='—';
-    document.getElementById('kDup').textContent='—';
-    // Count from filtered top lists
-    let entCount=0,cityCount=0;
-    const entData=getFilteredEntities(f);
-    const cityData=getFilteredCities(f);
-    let total=0;
-    if(f.clf && !f.tipo && !f.city && !f.ent){
-      total=Object.entries(DATA.clf).filter(([k])=>k===f.clf).reduce((s,[,v])=>s+v,0);
-    }else if(!f.clf && f.tipo && !f.city && !f.ent){
-      total=Object.entries(DATA.tipo).filter(([k])=>k===f.tipo).reduce((s,[,v])=>s+v,0);
-    }else{
-      total=entData.reduce((s,e)=>s+e.count,0);
-    }
-    document.getElementById('kTotal').textContent=total>0?fmt(total):'—';
-    document.getElementById('kUnicos').textContent='—';
-    document.getElementById('kDup').textContent='—';
-    document.getElementById('kEnt').textContent=fmt(entData.length);
-    document.getElementById('kCity').textContent=fmt(cityData.length);
-  }
+function renderKPIs(rows){
+  const total=rows.reduce((s,r)=>s+r[4],0);
+  const entSet=new Set(),citySet=new Set();
+  rows.forEach(r=>{entSet.add(r[3]);citySet.add(r[2]);});
+  document.getElementById('kTotal').textContent=fmt(total);
+  document.getElementById('kEnt').textContent=fmt(entSet.size);
+  document.getElementById('kCity').textContent=fmt(citySet.size);
+  document.getElementById('kUnicos').textContent=fmt(DATA.kpis.unicos);
+  document.getElementById('kDup').textContent=fmt(DATA.kpis.duplicados);
 }
 
-function getFilteredEntities(f){
-  if(f.clf && DATA.clfEnt[f.clf]) return DATA.clfEnt[f.clf];
-  return DATA.topEnt;
-}
-function getFilteredCities(f){
-  if(f.clf && DATA.clfCity[f.clf]) return DATA.clfCity[f.clf];
-  return DATA.topCity;
-}
-
-function renderPies(f){
-  // Clasificación pie
-  let clfData=DATA.clf;
-  if(f.tipo){
-    // Filter clf_tipo by tipo
-    const filtered={};
-    DATA.clfTipo.filter(r=>r.tipo===f.tipo).forEach(r=>{filtered[r.clf]=(filtered[r.clf]||0)+r.n;});
-    if(Object.keys(filtered).length>0) clfData=filtered;
-  }
+function renderPies(rows){
+  const clfAgg={};
+  rows.forEach(r=>{const k=CUBE.clfs[r[0]]||'N/A';clfAgg[k]=(clfAgg[k]||0)+r[4];});
   const clfColors={'EMBARGO':'#e74c3c','DESEMBARGO':'#2ecc71','REQUERIMIENTO':'#f39c12'};
-  const clfLabels=Object.keys(clfData);
+  const clfLabels=Object.keys(clfAgg);
   Plotly.newPlot('pieClf',[{
-    type:'pie',labels:clfLabels,values:clfLabels.map(k=>clfData[k]),
+    type:'pie',labels:clfLabels,values:clfLabels.map(k=>clfAgg[k]),
     hole:.4,textinfo:'label+percent+value',
     marker:{colors:clfLabels.map(k=>clfColors[k]||'#888')}
   }],{...plotLayout},plotCfg);
 
-  // Tipo pie
-  let tipoData=DATA.tipo;
-  if(f.clf){
-    const filtered={};
-    DATA.clfTipo.filter(r=>r.clf===f.clf).forEach(r=>{filtered[r.tipo]=(filtered[r.tipo]||0)+r.n;});
-    if(Object.keys(filtered).length>0) tipoData=filtered;
-  }
+  const tipoAgg={};
+  rows.forEach(r=>{const k=CUBE.tipos[r[1]]||'N/A';tipoAgg[k]=(tipoAgg[k]||0)+r[4];});
   const tipoColors={'JUDICIAL':'#3498db','COACTIVO':'#9b59b6'};
-  const tipoLabels=Object.keys(tipoData);
+  const tipoLabels=Object.keys(tipoAgg);
   Plotly.newPlot('pieTipo',[{
-    type:'pie',labels:tipoLabels,values:tipoLabels.map(k=>tipoData[k]),
+    type:'pie',labels:tipoLabels,values:tipoLabels.map(k=>tipoAgg[k]),
     hole:.4,textinfo:'label+percent+value',
     marker:{colors:tipoLabels.map(k=>tipoColors[k]||'#888')}
   }],{...plotLayout},plotCfg);
 }
 
-function renderBars(f){
-  const entData=getFilteredEntities(f).slice(0,25);
-  const entNames=entData.map(e=>e.name).reverse();
-  const entValues=entData.map(e=>e.count).reverse();
+function renderBars(rows){
+  const entAgg={};
+  rows.forEach(r=>{const k=CUBE.ents[r[3]]||'N/A';entAgg[k]=(entAgg[k]||0)+r[4];});
+  const entSorted=Object.entries(entAgg).sort((a,b)=>b[1]-a[1]).slice(0,25);
+  const entNames=entSorted.map(e=>e[0]).reverse();
+  const entValues=entSorted.map(e=>e[1]).reverse();
   Plotly.newPlot('barEnt',[{
     type:'bar',x:entValues,y:entNames,orientation:'h',
     marker:{color:entValues.map((_,i)=>`hsl(${5+i*2},70%,${45+i}%)`)}
   }],{...plotLayout,margin:{l:320,r:20,t:10,b:40},height:650,
       yaxis:{autorange:true}},plotCfg);
 
-  const cityData=getFilteredCities(f).slice(0,25);
-  const cityNames=cityData.map(e=>e.name).reverse();
-  const cityValues=cityData.map(e=>e.count).reverse();
+  const cityAgg={};
+  rows.forEach(r=>{const k=CUBE.cities[r[2]]||'N/A';cityAgg[k]=(cityAgg[k]||0)+r[4];});
+  const citySorted=Object.entries(cityAgg).sort((a,b)=>b[1]-a[1]).slice(0,25);
+  const cityNames=citySorted.map(e=>e[0]).reverse();
+  const cityValues=citySorted.map(e=>e[1]).reverse();
   Plotly.newPlot('barCity',[{
     type:'bar',x:cityValues,y:cityNames,orientation:'h',
     marker:{color:cityValues.map((_,i)=>`hsl(${120+i*3},60%,${40+i}%)`)}
@@ -306,18 +298,37 @@ function renderBars(f){
       yaxis:{autorange:true}},plotCfg);
 }
 
-function renderCross(){
-  const c=DATA.cross;
-  const rows=Object.keys(c);
-  const cols=rows.length>0?Object.keys(c[rows[0]]):[];
-  let html='<table><thead><tr><th></th>';
-  cols.forEach(col=>html+='<th>'+col+'</th>');
-  html+='</tr></thead><tbody>';
-  rows.forEach(row=>{
-    html+='<tr><td><strong>'+row+'</strong></td>';
-    cols.forEach(col=>html+='<td>'+fmt(c[row][col]||0)+'</td>');
-    html+='</tr>';
+function renderCross(rows){
+  const matrix={};
+  const allClf=new Set(),allTipo=new Set();
+  rows.forEach(r=>{
+    const c=CUBE.clfs[r[0]]||'N/A',t=CUBE.tipos[r[1]]||'N/A';
+    allClf.add(c);allTipo.add(t);
+    if(!matrix[c]) matrix[c]={};
+    matrix[c][t]=(matrix[c][t]||0)+r[4];
   });
+  const rClf=Array.from(allClf).sort();
+  const cTipo=Array.from(allTipo).sort();
+  const totRow={};
+  rClf.forEach(c=>{
+    let rowTotal=0;
+    cTipo.forEach(t=>{const v=matrix[c]?.[t]||0;rowTotal+=v;totRow[t]=(totRow[t]||0)+v;});
+    if(!matrix[c]) matrix[c]={};
+    matrix[c]['TOTAL']=rowTotal;
+  });
+  const grandTotal=Object.values(totRow).reduce((a,b)=>a+b,0);
+
+  let html='<table><thead><tr><th></th>';
+  cTipo.forEach(t=>html+='<th>'+t+'</th>');
+  html+='<th>TOTAL</th></tr></thead><tbody>';
+  rClf.forEach(c=>{
+    html+='<tr><td><strong>'+c+'</strong></td>';
+    cTipo.forEach(t=>html+='<td>'+fmt(matrix[c]?.[t]||0)+'</td>');
+    html+='<td><strong>'+fmt(matrix[c]?.['TOTAL']||0)+'</strong></td></tr>';
+  });
+  html+='<tr><td><strong>TOTAL</strong></td>';
+  cTipo.forEach(t=>html+='<td><strong>'+fmt(totRow[t]||0)+'</strong></td>');
+  html+='<td><strong>'+fmt(grandTotal)+'</strong></td></tr>';
   html+='</tbody></table>';
   document.getElementById('crossTable').innerHTML=html;
 }

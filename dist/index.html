@@ -63,6 +63,12 @@
       <select id="fCity"><option value="">Todas</option></select></div>
     <div><label>Entidad:</label>
       <select id="fEnt"><option value="">Todas</option></select></div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <label style="cursor:pointer;display:flex;align-items:center;gap:6px">
+        <input type="checkbox" id="fDup" style="width:16px;height:16px;cursor:pointer">
+        <span style="font-size:.85rem">Excluir duplicados</span>
+      </label>
+    </div>
     <div class="filter-info" id="filterInfo"></div>
   </div>
 
@@ -147,18 +153,25 @@ const plotLayout={paper_bgcolor:'#1a1d23',plot_bgcolor:'#1a1d23',
 const plotCfg={responsive:true,displayModeBar:false};
 
 let DATA={};
-let CUBE=null; // {clfs,tipos,cities,ents,rows} — rows:[clfIdx,tipoIdx,cityIdx,entIdx,count]
+let CUBE_ALL=null; // all records
+let CUBE_UNI=null; // unique records only
+let CUBE=null;     // active cube (pointer to ALL or UNI)
 
 async function load(f){const r=await fetch(D+f);return r.json();}
 
 async function init(){
   try{
-    [DATA.kpis,DATA.topDup,DATA.varEnt,DATA.varCity,DATA.filtros,CUBE]=await Promise.all([
+    [DATA.kpis,DATA.topDup,DATA.varEnt,DATA.varCity,DATA.filtros,CUBE_ALL,CUBE_UNI]=await Promise.all([
       load('kpis.json'),load('top_duplicados.json'),
       load('variantes_entidad.json'),load('variantes_ciudad.json'),
-      load('filtros.json'),load('cube.json')
+      load('filtros.json'),load('cube.json'),load('cube_unicos.json')
     ]);
+    CUBE=CUBE_ALL;
     populateFilters();
+    document.getElementById('fDup').addEventListener('change',function(){
+      CUBE=this.checked?CUBE_UNI:CUBE_ALL;
+      render();
+    });
     render();
   }catch(e){
     document.querySelector('.container').innerHTML=
@@ -225,6 +238,7 @@ function render(){
   const rows=filteredRows(f);
 
   const parts=[];
+  if(document.getElementById('fDup').checked) parts.push('Sin duplicados');
   if(f.clf) parts.push('Clasif: '+f.clf);
   if(f.tipo) parts.push('Tipo: '+f.tipo);
   if(f.city) parts.push('Ciudad: '+f.city);

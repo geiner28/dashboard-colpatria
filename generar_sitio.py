@@ -239,6 +239,19 @@ def main():
     _w({"clfs": cube_clfs, "tipos": cube_tipos, "cities": cube_cities,
         "ents": cube_ents, "rows": rows}, "cube.json")
 
+    # 15) Cube sin duplicados
+    g_u = df_unicos.groupby(["tipo_documento","tipo_embargo","ciudad_norm","entidad_norm"],
+                            dropna=False).size().reset_index(name="n")
+    rows_u = []
+    for _, r in g_u.iterrows():
+        ci = cube_clfs.index(r["tipo_documento"]) if pd.notna(r["tipo_documento"]) else -1
+        ti = cube_tipos.index(r["tipo_embargo"]) if pd.notna(r["tipo_embargo"]) else -1
+        cyi = cube_cities.index(r["ciudad_norm"]) if pd.notna(r["ciudad_norm"]) else -1
+        ei = cube_ents.index(r["entidad_norm"]) if pd.notna(r["entidad_norm"]) else -1
+        rows_u.append([ci, ti, cyi, ei, int(r["n"])])
+    _w({"clfs": cube_clfs, "tipos": cube_tipos, "cities": cube_cities,
+        "ents": cube_ents, "rows": rows_u}, "cube_unicos.json")
+
     # ── Copiar HTML ──
     print("📄 Generando index.html …")
     html_src = os.path.join(os.path.dirname(__file__), "_site_template.html")
